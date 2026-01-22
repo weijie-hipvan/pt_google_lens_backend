@@ -7,7 +7,7 @@ module API
   module V1
     class ObjectDetection < BaseAPI
       version "v1", using: :path
-      
+
       helpers Helpers::ObjectDetectionHelpers
 
       desc "Detect objects in an image and return annotated image with metadata",
@@ -44,7 +44,7 @@ module API
           # Detect objects using Google Vision API (may resize internally)
           vision_service = GoogleVisionService.new
           detection_result = vision_service.detect_objects(temp_image_path)
-          
+
           detected_objects = detection_result[:objects]
           processed_width = detection_result[:image_dimensions][:width]
           processed_height = detection_result[:image_dimensions][:height]
@@ -53,7 +53,7 @@ module API
           # Process and categorize objects
           # Use processed dimensions for coordinate conversion (what Google saw)
           processed_objects = process_objects(detected_objects, processed_width, processed_height)
-          
+
           # If image was resized, we need to scale coordinates back to original size for annotation
           if was_resized
             scale_x = original_width.to_f / processed_width
@@ -72,6 +72,13 @@ module API
             processed_objects
           )
 
+          # Generate thumbnails for each object and add thumbnail_url
+          processed_objects_with_thumbnails = generate_thumbnails(
+            temp_image_path,
+            processed_objects,
+            request.base_url
+          )
+
           # Save to cache if caching is enabled
           if ::ObjectDetection::ENABLE_CACHING
             detection = ::ObjectDetection.create!(
@@ -80,9 +87,9 @@ module API
               annotated_image_path: annotated_image_path,
               image_width: original_width,
               image_height: original_height,
-              total_objects: processed_objects.length,
+              total_objects: processed_objects_with_thumbnails.length,
               categories: summary[:categories],
-              objects_data: processed_objects
+              objects_data: processed_objects_with_thumbnails
             )
 
             # Return response
@@ -95,7 +102,7 @@ module API
                 annotated_image_url: annotated_image_path.start_with?("http") ? annotated_image_path : "#{request.base_url}#{annotated_image_path}"
               },
               summary: summary,
-              objects: processed_objects
+              objects: processed_objects_with_thumbnails
             }
           end
         rescue ImageDownloader::ImageTooLargeError => e

@@ -97,6 +97,57 @@ module API
           # Return relative path for URL generation
           "/annotated_images/#{filename}"
         end
+
+        def generate_thumbnails(image_path, objects, base_url)
+          # Create thumbnails directory if it doesn't exist
+          thumbnails_dir = Rails.root.join("public", "thumbnails")
+          FileUtils.mkdir_p(thumbnails_dir)
+
+          # Generate thumbnails for objects that have bounding boxes
+          objects.map do |obj|
+            crop = obj[:thumbnail_crop]
+            
+            # Skip if no crop coordinates available
+            if crop.nil? || crop.empty? || crop[:width].to_i <= 0 || crop[:height].to_i <= 0
+              obj.merge(thumbnail_url: nil)
+            else
+              # Generate unique filename for thumbnail
+              thumbnail_filename = "thumb_#{Time.current.to_i}_#{SecureRandom.hex(8)}_#{obj[:id]}.jpg"
+              thumbnail_path = thumbnails_dir.join(thumbnail_filename)
+
+              # Crop image using MiniMagick
+              begin
+                image = MiniMagick::Image.open(image_path)
+                
+                # Crop the image: crop(widthxheight+x+y)
+                # x and y are the top-left corner coordinates
+                image.crop("#{crop[:width]}x#{crop[:height]}+#{crop[:x]}+#{crop[:y]}")
+                
+                # Ensure minimum size for thumbnails (at least 100x100 for usability)
+                min_size = 100
+                if crop[:width] < min_size || crop[:height] < min_size
+                  # Resize to minimum size while maintaining aspect ratio
+                  scale = [min_size.to_f / crop[:width], min_size.to_f / crop[:height]].max
+                  new_width = (crop[:width] * scale).to_i
+                  new_height = (crop[:height] * scale).to_i
+                  image.resize("#{new_width}x#{new_height}")
+                end
+                
+                # Save as JPG
+                image.format "jpg"
+                image.write(thumbnail_path.to_s)
+                
+                # Generate URL
+                thumbnail_url = "#{base_url}/thumbnails/#{thumbnail_filename}"
+                
+                obj.merge(thumbnail_url: thumbnail_url)
+              rescue MiniMagick::Error => e
+                Rails.logger.error "Failed to generate thumbnail for #{obj[:id]}: #{e.message}"
+                obj.merge(thumbnail_url: nil)
+              end
+            end
+          end
+        end
       end
     end
   end

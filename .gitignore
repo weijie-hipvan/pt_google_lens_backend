@@ -21,6 +21,8 @@ public/assets
 !/public/annotated_images/.gitkeep
 /public/uploads/*
 !/public/uploads/.gitkeep
+/public/thumbnails/*
+!/public/thumbnails/.gitkeep
 
 # Ignore pidfiles, but keep the directory.
 /tmp/pids/*
