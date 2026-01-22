@@ -7,7 +7,7 @@ class ObjectDetection
 
   # Image identification
   field :image_url, type: String
-  field :image_hash, type: String, index: true # SHA256 hash of image URL for caching
+  field :image_hash, type: String # SHA256 hash of image URL for caching
 
   # Detection results
   field :annotated_image_path, type: String
@@ -22,6 +22,7 @@ class ObjectDetection
   # Indexes
   index({ image_hash: 1 }, unique: true)
   index({ created_at: -1 })
+  index({ image_url: 1 })
 
   # Validations
   validates :image_url, presence: true
@@ -35,7 +36,7 @@ class ObjectDetection
 
   # Find cached result by image URL
   def self.find_by_image_url(url)
-    find_by(image_hash: hash_for_url(url))
+    where(image_hash: hash_for_url(url)).first
   end
 
   # Convert to API response format

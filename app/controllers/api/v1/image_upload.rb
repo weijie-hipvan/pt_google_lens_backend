@@ -9,7 +9,7 @@ module API
       version "v1", using: :path
 
       desc "Upload an image file and return its URL",
-           consumes: ["multipart/form-data"],
+           consumes: [ "multipart/form-data" ],
            success: { code: 200, message: "Image uploaded successfully" },
            failure: [
              { code: 400, message: "Invalid image file" },
@@ -72,12 +72,14 @@ module API
         {
           status: true,
           message: "Image uploaded successfully",
-          image_url: image_url,
-          filename: unique_filename,
-          size: file_size,
-          width: image.width,
-          height: image.height,
-          format: image.type
+          data: {
+            image_url: image_url,
+            filename: unique_filename,
+            size: file_size,
+            width: image.width,
+            height: image.height,
+            format: image.type
+          }
         }
       rescue StandardError => e
         error!({ status: false, message: "Failed to upload image: #{e.message}", code: 500 }, 500)
