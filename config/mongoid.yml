@@ -1,0 +1,30 @@
+development:
+  clients:
+    default:
+      uri: <%= ENV['MONGO_DB_URL'] || 'mongodb://localhost:27017/pt_google_lens_backend_development' %>
+      options:
+        # The following options are example settings for a MongoDB connection
+        # max_pool_size: 5
+        # read:
+        #   mode: :primary
+        #   tag_sets:
+        #     - use: web
+        #   local_threshold: 0.015
+
+test:
+  clients:
+    default:
+      uri: <%= ENV['MONGO_DB_URL'] || 'mongodb://localhost:27017/pt_google_lens_backend_test' %>
+      options:
+        read:
+          mode: :primary
+        max_pool_size: 1
+
+production:
+  clients:
+    default:
+      uri: <%= ENV['MONGO_DB_URL'] || 'mongodb://localhost:27017/pt_google_lens_backend_production' %>
+      options:
+        read:
+          mode: :primary
+        max_pool_size: 5
