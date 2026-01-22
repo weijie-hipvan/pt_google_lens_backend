@@ -10,6 +10,8 @@ module API
 
       # Mount other API endpoints here
       mount API::V1::Examples
+      mount API::V1::ImageUpload
+      mount API::V1::ObjectDetection
       # mount API::V1::Users
       # mount API::V1::Products
 
@@ -21,7 +23,9 @@ module API
           title: "PT Google Lens Backend API",
           description: "RESTful API documentation for PT Google Lens Backend",
           version: "v1"
-        }
+        },
+        consumes: [ "application/json", "multipart/form-data" ],
+        produces: [ "application/json" ]
       )
     end
   end

@@ -17,6 +17,10 @@
 !/tmp/.keep
 .kamal
 public/assets
+/public/annotated_images/*
+!/public/annotated_images/.gitkeep
+/public/uploads/*
+!/public/uploads/.gitkeep
 
 # Ignore pidfiles, but keep the directory.
 /tmp/pids/*
