@@ -23,10 +23,12 @@ module API
       post :object_detection do
         image_url = params[:image_url]
 
-        # Check cache first (use ::ObjectDetection to reference the model, not the API class)
-        cached_result = ::ObjectDetection.find_by_image_url(image_url)
-        if cached_result
-          return cached_result.to_api_response(request.base_url)
+        # Check cache first if caching is enabled
+        if ::ObjectDetection::ENABLE_CACHING
+          cached_result = ::ObjectDetection.find_by_image_url(image_url)
+          if cached_result
+            return cached_result.to_api_response(request.base_url)
+          end
         end
 
         # Download image
@@ -70,20 +72,32 @@ module API
             processed_objects
           )
 
-          # Save to cache
-          detection = ::ObjectDetection.create!(
-            image_url: image_url,
-            image_hash: ::ObjectDetection.hash_for_url(image_url),
-            annotated_image_path: annotated_image_path,
-            image_width: original_width,
-            image_height: original_height,
-            total_objects: processed_objects.length,
-            categories: summary[:categories],
-            objects_data: processed_objects
-          )
+          # Save to cache if caching is enabled
+          if ::ObjectDetection::ENABLE_CACHING
+            detection = ::ObjectDetection.create!(
+              image_url: image_url,
+              image_hash: ::ObjectDetection.hash_for_url(image_url),
+              annotated_image_path: annotated_image_path,
+              image_width: original_width,
+              image_height: original_height,
+              total_objects: processed_objects.length,
+              categories: summary[:categories],
+              objects_data: processed_objects
+            )
 
-          # Return response
-          detection.to_api_response(request.base_url)
+            # Return response
+            detection.to_api_response(request.base_url)
+          else
+            # Return response without saving to cache
+            {
+              image: {
+                original_url: image_url,
+                annotated_image_url: annotated_image_path.start_with?("http") ? annotated_image_path : "#{request.base_url}#{annotated_image_path}"
+              },
+              summary: summary,
+              objects: processed_objects
+            }
+          end
         rescue ImageDownloader::ImageTooLargeError => e
           error!({ status: false, message: e.message, code: 413 }, 413)
         rescue ImageDownloader::InvalidImageURLError, ImageDownloader::UnsupportedImageTypeError => e

@@ -1,0 +1,334 @@
+# frozen_string_literal: true
+
+require "fileutils"
+require "tempfile"
+
+# Service to interact with Google Cloud Vision API
+# Uses OBJECT_LOCALIZATION feature to detect objects in images
+class GoogleVisionService
+  class VisionAPIError < StandardError; end
+
+  # Google Vision API limit: 75 megapixels
+  MAX_MEGAPIXELS = 75
+  MAX_PIXELS = MAX_MEGAPIXELS * 1_000_000
+
+  def initialize
+    @client = initialize_client
+  end
+
+  # Detect objects in an image file
+  # Returns hash with :objects array and :image_dimensions hash
+  def detect_objects(image_path)
+    # Resize image if it exceeds Google's limits
+    processed_image_path, was_resized = resize_if_needed(image_path)
+
+    begin
+      # Get dimensions of the original processed image
+      processed_image = MiniMagick::Image.open(processed_image_path)
+      processed_width = processed_image.width
+      processed_height = processed_image.height
+
+      # Try multiple detection strategies to maximize object detection
+      # Strategy 1: Original image
+      all_objects = []
+
+      # Original image detection
+      image_content = File.binread(processed_image_path)
+      request1 = {
+        image: { content: image_content },
+        features: [ { type: :OBJECT_LOCALIZATION, max_results: 50 } ]
+      }
+
+      response1 = @client.batch_annotate_images(requests: [ request1 ])
+      result1 = response1.responses.first
+      if result1 && !result1.error
+        objects1 = parse_objects(result1.localized_object_annotations)
+        all_objects.concat(objects1)
+        Rails.logger.info "Original image: detected #{objects1.length} objects"
+      end
+
+      # Strategy 2: Enhanced image (sharpened, contrast adjusted)
+      enhanced_image_path = enhance_image_for_detection(processed_image_path)
+      if enhanced_image_path != processed_image_path && File.exist?(enhanced_image_path)
+        begin
+          enhanced_content = File.binread(enhanced_image_path)
+          request2 = {
+            image: { content: enhanced_content },
+            features: [ { type: :OBJECT_LOCALIZATION, max_results: 50 } ]
+          }
+
+          response2 = @client.batch_annotate_images(requests: [ request2 ])
+          result2 = response2.responses.first
+          if result2 && !result2.error
+            objects2 = parse_objects(result2.localized_object_annotations)
+            all_objects.concat(objects2)
+            Rails.logger.info "Enhanced image: detected #{objects2.length} objects"
+          end
+        ensure
+          # Clean up enhanced image
+          if enhanced_image_path != processed_image_path && File.exist?(enhanced_image_path)
+            FileUtils.rm_f(enhanced_image_path)
+          end
+        end
+      end
+
+      # Strategy 3: Slightly upscaled image (can help with small objects)
+      if processed_width * processed_height < 10_000_000  # Only if not too large
+        upscaled_image_path = upscale_image(processed_image_path)
+        if upscaled_image_path != processed_image_path && File.exist?(upscaled_image_path)
+          begin
+            upscaled_content = File.binread(upscaled_image_path)
+            request3 = {
+              image: { content: upscaled_content },
+              features: [ { type: :OBJECT_LOCALIZATION, max_results: 50 } ]
+            }
+
+            response3 = @client.batch_annotate_images(requests: [ request3 ])
+            result3 = response3.responses.first
+            if result3 && !result3.error
+              objects3 = parse_objects(result3.localized_object_annotations)
+              # Scale coordinates back to original size
+              scale_factor = processed_width.to_f / MiniMagick::Image.open(upscaled_image_path).width
+              objects3.each do |obj|
+                if obj[:bounding_poly]
+                  obj[:bounding_poly][:x_min] *= scale_factor
+                  obj[:bounding_poly][:y_min] *= scale_factor
+                  obj[:bounding_poly][:x_max] *= scale_factor
+                  obj[:bounding_poly][:y_max] *= scale_factor
+                end
+              end
+              all_objects.concat(objects3)
+              Rails.logger.info "Upscaled image: detected #{objects3.length} objects"
+            end
+          ensure
+            if upscaled_image_path != processed_image_path && File.exist?(upscaled_image_path)
+              FileUtils.rm_f(upscaled_image_path)
+            end
+          end
+        end
+      end
+
+      # Deduplicate objects (same name and overlapping bounding boxes)
+      detected_objects = deduplicate_objects(all_objects)
+      Rails.logger.info "Total unique objects detected: #{detected_objects.length}"
+
+      {
+        objects: detected_objects,
+        image_dimensions: {
+          width: processed_width,
+          height: processed_height
+        },
+        was_resized: was_resized
+      }
+    rescue Google::Cloud::Error => e
+      raise VisionAPIError, "Google Vision API error: #{e.message}"
+    ensure
+      # Clean up temporary resized image if it was created
+      if processed_image_path != image_path && File.exist?(processed_image_path)
+        FileUtils.rm_f(processed_image_path)
+      end
+    end
+  end
+
+  private
+
+  # Resize image if it exceeds Google Vision API limits (75 megapixels)
+  # Returns [path_to_image, was_resized_boolean]
+  def resize_if_needed(image_path)
+    image = MiniMagick::Image.open(image_path)
+    width = image.width
+    height = image.height
+    total_pixels = width * height
+
+    # Check if image exceeds limit
+    if total_pixels > MAX_PIXELS
+      # Calculate new dimensions maintaining aspect ratio
+      scale_factor = Math.sqrt(MAX_PIXELS.to_f / total_pixels)
+      new_width = (width * scale_factor).to_i
+      new_height = (height * scale_factor).to_i
+
+      # Create temporary file for resized image
+      temp_file = Tempfile.new([ "resized_image", File.extname(image_path) ])
+      temp_file.binmode
+      temp_file.close
+
+      # Resize image
+      image.resize("#{new_width}x#{new_height}")
+      image.write(temp_file.path)
+
+      Rails.logger.info "Resized image from #{width}x#{height} (#{(total_pixels / 1_000_000.0).round(2)}MP) to #{new_width}x#{new_height} (#{(new_width * new_height / 1_000_000.0).round(2)}MP)"
+
+      [ temp_file.path, true ]
+    else
+      # Image is within limits, return original path
+      [ image_path, false ]
+    end
+  rescue MiniMagick::Error => e
+    Rails.logger.error "Failed to resize image: #{e.message}"
+    # Return original path if resize fails
+    [ image_path, false ]
+  end
+
+  def initialize_client
+    require "google/cloud/vision"
+
+    # Set credentials path if not already set in environment
+    unless ENV["GOOGLE_APPLICATION_CREDENTIALS"]
+      default_credentials_path = Rails.root.join("config", "credentials", "google-vision-service-account.json").to_s
+      if File.exist?(default_credentials_path)
+        ENV["GOOGLE_APPLICATION_CREDENTIALS"] = default_credentials_path
+      end
+    end
+
+    Google::Cloud::Vision.image_annotator
+  end
+
+  def parse_objects(annotations)
+    return [] unless annotations
+
+    # Log for debugging
+    Rails.logger.info "OBJECT_LOCALIZATION returned #{annotations.length} objects"
+
+    # Don't filter by confidence - return all objects Google detected
+    # Google Vision API already applies its own confidence threshold
+    annotations.map do |annotation|
+      {
+        name: annotation.name,
+        score: annotation.score,
+        bounding_poly: parse_bounding_poly(annotation.bounding_poly)
+      }
+    end
+  end
+
+  def parse_bounding_poly(bounding_poly)
+    return nil unless bounding_poly&.normalized_vertices
+
+    vertices = bounding_poly.normalized_vertices
+    return nil if vertices.empty?
+
+    # Extract min/max coordinates from normalized vertices
+    x_coords = vertices.map(&:x).compact
+    y_coords = vertices.map(&:y).compact
+
+    {
+      x_min: x_coords.min || 0.0,
+      y_min: y_coords.min || 0.0,
+      x_max: x_coords.max || 0.0,
+      y_max: y_coords.max || 0.0
+    }
+  end
+
+  # Enhance image to improve object detection
+  # Applies slight sharpening and contrast adjustment to make objects more distinct
+  def enhance_image_for_detection(image_path)
+    image = MiniMagick::Image.open(image_path)
+
+    # Only enhance if the image is large enough (small images might get artifacts)
+    if image.width * image.height > 50_000  # 100k pixels
+      # Create temporary file for enhanced image
+      temp_file = Tempfile.new([ "enhanced_image", File.extname(image_path) ])
+      temp_file.binmode
+      temp_file.close
+
+      # Apply subtle enhancements:
+      # - Sharpen slightly to make edges more distinct
+      # - Increase contrast slightly to separate objects from background
+      # - Normalize brightness to ensure good visibility
+      image.combine_options do |c|
+        c.sharpen "0x0.5"  # Very subtle sharpening
+        c.contrast  # Slight contrast increase
+        c.normalize  # Normalize brightness
+      end
+
+      image.write(temp_file.path)
+      Rails.logger.info "Enhanced image for better object detection"
+
+      temp_file.path
+    else
+      # Return original if image is too small
+      image_path
+    end
+  rescue MiniMagick::Error => e
+    Rails.logger.warn "Failed to enhance image: #{e.message}, using original"
+    image_path
+  end
+
+  # Upscale image slightly to help detect smaller objects
+  def upscale_image(image_path)
+    image = MiniMagick::Image.open(image_path)
+    width = image.width
+    height = image.height
+
+    # Upscale by 1.5x (not too much to avoid artifacts)
+    new_width = (width * 1.5).to_i
+    new_height = (height * 1.5).to_i
+
+    # Create temporary file for upscaled image
+    temp_file = Tempfile.new([ "upscaled_image", File.extname(image_path) ])
+    temp_file.binmode
+    temp_file.close
+
+    image.resize("#{new_width}x#{new_height}")
+    image.write(temp_file.path)
+    Rails.logger.info "Upscaled image from #{width}x#{height} to #{new_width}x#{new_height}"
+
+    temp_file.path
+  rescue MiniMagick::Error => e
+    Rails.logger.warn "Failed to upscale image: #{e.message}, using original"
+    image_path
+  end
+
+  # Deduplicate objects based on name and bounding box overlap
+  def deduplicate_objects(objects)
+    return objects if objects.empty?
+
+    # Group by name first
+    grouped = objects.group_by { |o| o[:name].downcase.strip }
+
+    deduplicated = []
+    grouped.each do |name, objs_with_same_name|
+      if objs_with_same_name.length == 1
+        deduplicated << objs_with_same_name.first
+      else
+        # For objects with same name, keep the one with highest confidence
+        # and remove ones with significantly overlapping bounding boxes
+        objs_with_same_name.sort_by { |o| -o[:score] }.each do |obj|
+          # Check if this object overlaps significantly with any already added
+          is_duplicate = deduplicated.any? do |existing|
+            existing[:name].downcase.strip == name &&
+            bounding_box_overlap(existing[:bounding_poly], obj[:bounding_poly]) > 0.7
+          end
+
+          deduplicated << obj unless is_duplicate
+        end
+      end
+    end
+
+    # Sort by confidence
+    deduplicated.sort_by { |o| -o[:score] }
+  end
+
+  # Calculate overlap ratio between two bounding boxes (0.0 to 1.0)
+  def bounding_box_overlap(bbox1, bbox2)
+    return 0.0 if bbox1.nil? || bbox2.nil?
+
+    # Calculate intersection
+    x_min = [ bbox1[:x_min], bbox2[:x_min] ].max
+    y_min = [ bbox1[:y_min], bbox2[:y_min] ].max
+    x_max = [ bbox1[:x_max], bbox2[:x_max] ].min
+    y_max = [ bbox1[:y_max], bbox2[:y_max] ].min
+
+    return 0.0 if x_max <= x_min || y_max <= y_min
+
+    intersection = (x_max - x_min) * (y_max - y_min)
+
+    # Calculate union
+    area1 = (bbox1[:x_max] - bbox1[:x_min]) * (bbox1[:y_max] - bbox1[:y_min])
+    area2 = (bbox2[:x_max] - bbox2[:x_min]) * (bbox2[:y_max] - bbox2[:y_min])
+    union = area1 + area2 - intersection
+
+    return 0.0 if union == 0.0
+
+    intersection.to_f / union
+  end
+end

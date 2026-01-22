@@ -11,15 +11,15 @@ module API
             confidence = obj[:score]
             bounding_box = obj[:bounding_poly]
 
-            # Convert normalized coordinates to pixel coordinates
-            pixel_coords = convert_to_pixels(bounding_box, image_width, image_height)
+            # Convert normalized coordinates to pixel coordinates (only if bounding box exists)
+            pixel_coords = bounding_box ? convert_to_pixels(bounding_box, image_width, image_height) : {}
 
             {
               id: "obj_#{index}",
               label: label,
               category: category,
               confidence: confidence,
-              bounding_box: bounding_box,
+              bounding_box: bounding_box || {},
               thumbnail_crop: pixel_coords
             }
           end
@@ -50,6 +50,9 @@ module API
 
         def scale_object_coordinates(objects, scale_x, scale_y)
           objects.map do |obj|
+            # Skip scaling if no bounding box (from LABEL_DETECTION)
+            next obj if obj[:bounding_box].nil? || obj[:bounding_box].empty?
+            
             # Scale bounding box coordinates
             bbox = obj[:bounding_box]
             scaled_bbox = {
@@ -84,9 +87,12 @@ module API
           filename = "annotated_#{Time.current.to_i}_#{SecureRandom.hex(8)}.jpg"
           output_path = output_dir.join(filename)
 
-          # Annotate image
+          # Filter out objects without bounding boxes for annotation (LABEL_DETECTION results)
+          objects_with_boxes = objects.select { |o| o[:bounding_box] && !o[:bounding_box].empty? }
+
+          # Annotate image (only objects with bounding boxes)
           annotator = ImageAnnotator.new(image_path, image_width, image_height)
-          annotator.annotate(objects, output_path.to_s)
+          annotator.annotate(objects_with_boxes, output_path.to_s)
 
           # Return relative path for URL generation
           "/annotated_images/#{filename}"

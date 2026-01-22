@@ -5,6 +5,10 @@ class ObjectDetection
   include Mongoid::Document
   include Mongoid::Timestamps
 
+  # Control caching behavior
+  # Set to false to disable caching (always perform fresh detection)
+  ENABLE_CACHING = false
+
   # Image identification
   field :image_url, type: String
   field :image_hash, type: String # SHA256 hash of image URL for caching
