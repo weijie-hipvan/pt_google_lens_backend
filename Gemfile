@@ -46,6 +46,15 @@ gem "grape-swagger"
 gem "grape-swagger-rails"
 gem "grape_on_rails_routes"
 
+# Google Cloud Vision API
+gem "google-cloud-vision"
+
+# Image processing
+gem "mini_magick"
+
+# HTTP client for downloading images
+gem "faraday"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"

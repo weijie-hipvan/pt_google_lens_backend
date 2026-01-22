@@ -4,7 +4,6 @@ require "grape-swagger"
 
 module API
   class BaseAPI < Grape::API
-
     if Rails.env.development?
       use GrapeLogging::Middleware::RequestLogger, logger: logger, formatter: GrapeLogging::Formatters::Rails.new
 
@@ -20,7 +19,6 @@ module API
       puts "\e[31m Has error: #{e.message} \e[0m" if Rails.env.development?
 
       begin
-        Sentry.capture_exception(e)
         Rails.logger.info "Exception sent to Sentry: #{e.class.name} - #{e.message}"
       rescue StandardError => e
         Rails.logger.error "Failed to send exception to Sentry: #{e.message}"
@@ -35,20 +33,15 @@ module API
       # Log backtrace in development
       if Rails.env.development?
         puts "\e[31m Backtrace: \e[0m"
-        e.backtrace.select { |line| line.include?("/app/") }.each { |line| puts line }
-      end
-
-      begin
-        Rails.logger.info "Exception sent to Sentry: #{e.class.name} - #{e.message}"
-      rescue StandardError => e
-        Rails.logger.error "Failed to send exception to Sentry: #{e.message}"
-        Rails.logger.error e.backtrace.join("\n")
+        puts e.backtrace.select { |line| line.include?("/app/") }.each { |line| puts line }
       end
 
       error!({ status: false, message: e.message, code: 500 }, 500)
     end
 
     format :json
+    content_type :json, "application/json"
+    content_type :multipart, "multipart/form-data"
     prefix :api
   end
 end

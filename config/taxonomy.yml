@@ -1,0 +1,64 @@
+# Object Category Taxonomy
+# Maps Google Vision API object labels to higher-level categories
+# If an object label is not found here, it defaults to "other"
+
+furniture:
+  - Chair
+  - Table
+  - Sofa
+  - Couch
+  - Bed
+  - Desk
+  - Cabinet
+  - Shelf
+  - Bookshelf
+  - Dresser
+  - Nightstand
+  - Coffee table
+  - Dining table
+  - Office chair
+  - Armchair
+  - Stool
+  - Bench
+
+people:
+  - Person
+  - People
+  - Human
+  - Man
+  - Woman
+  - Child
+
+vehicle:
+  - Car
+  - Truck
+  - Bicycle
+  - Motorcycle
+  - Bus
+  - Van
+  - SUV
+  - Motor vehicle
+
+electronics:
+  - Television
+  - TV
+  - Laptop
+  - Computer
+  - Monitor
+  - Phone
+  - Smartphone
+  - Tablet
+  - Keyboard
+  - Mouse
+  - Speaker
+  - Headphones
+
+appliance:
+  - Refrigerator
+  - Microwave
+  - Oven
+  - Washing machine
+  - Dishwasher
+  - Stove
+  - Toaster
+  - Coffee maker

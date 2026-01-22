@@ -17,6 +17,12 @@
 !/tmp/.keep
 .kamal
 public/assets
+/public/annotated_images/*
+!/public/annotated_images/.gitkeep
+/public/uploads/*
+!/public/uploads/.gitkeep
+/public/thumbnails/*
+!/public/thumbnails/.gitkeep
 
 # Ignore pidfiles, but keep the directory.
 /tmp/pids/*
@@ -32,3 +38,6 @@ public/assets
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+
+# Ignore Google Cloud service account credentials
+/config/credentials/*.json
