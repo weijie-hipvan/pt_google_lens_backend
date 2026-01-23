@@ -183,11 +183,10 @@ GEM
     mongo (2.22.0)
       base64
       bson (>= 4.14.1, < 6.0.0)
-    mongoid (8.1.11)
-      activemodel (>= 5.1, < 8.1, != 7.0.0)
+    mongoid (9.0.9)
+      activemodel (>= 5.1, < 8.2, != 7.0.0)
       concurrent-ruby (>= 1.0.5, < 2.0)
       mongo (>= 2.18.0, < 3.0.0)
-      ruby2_keywords (~> 0.0.5)
     msgpack (1.8.0)
     multi_json (1.19.1)
     mustermann (3.0.4)
@@ -390,7 +389,7 @@ DEPENDENCIES
   grape_logging
   grape_on_rails_routes
   kamal
-  mongoid (~> 8.0)
+  mongoid (~> 9.0)
   puma (>= 5.0)
   rack-cors
   rails (~> 8.0.2)

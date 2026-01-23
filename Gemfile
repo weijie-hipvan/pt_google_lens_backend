@@ -3,7 +3,7 @@ source "https://rubygems.org"
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 8.0.2"
 # Use MongoDB with Mongoid
-gem "mongoid", "~> 8.0"
+gem "mongoid", "~> 9.0"
 
 # Environment variables
 gem "dotenv-rails", groups: [ :development, :test ]
